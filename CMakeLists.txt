@@ -20,3 +20,5 @@ add_executable(${PROJECT_NAME}
 target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Wpedantic)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE sfml-system sfml-window sfml-graphics)
+
+file(COPY ${CMAKE_SOURCE_DIR}/JetBrainsMono-Regular.ttf DESTINATION ${CMAKE_BINARY_DIR})
