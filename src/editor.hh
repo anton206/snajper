@@ -4,6 +4,8 @@
 #include <SFML/Graphics.hpp>
 #include <cassert>
 
+enum class Mode { Edit, Command };
+
 class Editor {
 public:
   explicit Editor(sf::RenderWindow &window) : m_window(window) {
@@ -27,82 +29,114 @@ public:
 
     draw_buffer_text(m_buffer.lines);
 
-    m_cursor_rect.setPosition(static_cast<float>(cursor_pos.x) * 10 + 5,
-                              static_cast<float>(cursor_pos.y) * 24 + 10);
-    m_window.draw(m_cursor_rect);
+    if (m_mode == Mode::Edit) {
+      m_cursor_rect.setPosition(static_cast<float>(m_cursor.x) * 10 + 5,
+                                static_cast<float>(m_cursor.y) * 24 + 10);
+      m_window.draw(m_cursor_rect);
+    } else if (m_mode == Mode::Command) {
+      m_text.setFillColor(sf::Color(0xb16286ff));
+      m_text.setPosition(5, static_cast<float>(m_window.getSize().y) - 20);
+      m_text.setString("M-x: ");
+      m_window.draw(m_text);
+
+      m_text.setFillColor(sf::Color(0xebdbb2ff));
+      m_text.setPosition(50, static_cast<float>(m_window.getSize().y) - 20);
+      m_text.setString(m_minibuffer);
+      m_window.draw(m_text);
+    }
 
     m_window.display();
   }
 
   void process_text_entered(sf::String s) {
     switch (s[0]) {
-    case 8:  // Enter
-    case 13: // Backspace
+    case 8:   // Backspace
+    case 13:  // Enter
+    case 24:  // Ctrl+X
+    case 27:  // Escape
+    case 127: // Delete
       break;
     case 9: // Tab
-      m_buffer.lines[cursor_pos.y].insert(cursor_pos.x,
+      if (m_mode == Mode::Edit) {
+        m_buffer.lines[m_cursor.y].insert(m_cursor.x,
                                           std::string(TAB_SIZE, ' '));
-      cursor_pos.x += TAB_SIZE;
+        m_cursor.x += TAB_SIZE;
+      }
       break;
     default:
-      m_buffer.lines[cursor_pos.y].insert(cursor_pos.x, s);
-      cursor_pos.x++;
+      if (m_mode == Mode::Edit) {
+        m_buffer.lines[m_cursor.y].insert(m_cursor.x, s);
+        m_cursor.x++;
+      } else {
+        m_minibuffer += s;
+      }
     }
   }
 
   void process_key_pressed(sf::Event event) {
-    if (event.key.code == sf::Keyboard::Enter) {
-      if (m_buffer.lines[cursor_pos.y].getSize() - 1 < cursor_pos.x) {
-        m_buffer.lines.insert(m_buffer.lines.begin() + cursor_pos.y + 1, "");
-      } else {
-        m_buffer.lines.insert(m_buffer.lines.begin() + cursor_pos.y, "");
+    if (m_mode != Mode::Edit) {
+      if (event.key.code == sf::Keyboard::Escape ||
+          event.key.code == sf::Keyboard::Enter) {
+        m_mode = Mode::Edit;
       }
-      cursor_pos.y++;
-      cursor_pos.x = 0;
+      return;
+    }
+
+    if (event.key.code == sf::Keyboard::Enter) {
+      if (m_buffer.lines[m_cursor.y].getSize() - 1 < m_cursor.x) {
+        m_buffer.lines.insert(m_buffer.lines.begin() + m_cursor.y + 1, "");
+      } else {
+        m_buffer.lines.insert(m_buffer.lines.begin() + m_cursor.y, "");
+      }
+      m_cursor.y++;
+      m_cursor.x = 0;
+    } else if (event.key.control && event.key.code == sf::Keyboard::X) {
+      m_mode = Mode::Command;
+      m_minibuffer = "";
     } else if (event.key.code == sf::Keyboard::Left) {
-      if (cursor_pos.x == 0) {
-        if (cursor_pos.y != 0) {
-          cursor_pos.y--;
-          cursor_pos.x = m_buffer.lines[cursor_pos.y].getSize();
+      if (m_cursor.x == 0) {
+        if (m_cursor.y != 0) {
+          m_cursor.y--;
+          m_cursor.x = m_buffer.lines[m_cursor.y].getSize();
         }
       } else {
-        cursor_pos.x--;
+        m_cursor.x--;
       }
     } else if (event.key.code == sf::Keyboard::Right) {
-      if (m_buffer.lines[cursor_pos.y].getSize() - 1 < cursor_pos.x) {
-        if (cursor_pos.y < m_buffer.lines.size()) {
-          cursor_pos.y++;
-          cursor_pos.x = 0;
+      if (m_buffer.lines[m_cursor.y].getSize() - 1 < m_cursor.x) {
+        if (m_cursor.y < m_buffer.lines.size()) {
+          m_cursor.y++;
+          m_cursor.x = 0;
         }
       } else {
-        cursor_pos.x++;
+        m_cursor.x++;
       }
     } else if (event.key.code == sf::Keyboard::Up) {
-      if (cursor_pos.y > 0) {
-        cursor_pos.y--;
-        if (m_buffer.lines[cursor_pos.y].getSize() < cursor_pos.x) {
-          cursor_pos.x = m_buffer.lines[cursor_pos.y].getSize();
+      if (m_cursor.y > 0) {
+        m_cursor.y--;
+        if (m_buffer.lines[m_cursor.y].getSize() < m_cursor.x) {
+          m_cursor.x = m_buffer.lines[m_cursor.y].getSize();
         }
       }
     } else if (event.key.code == sf::Keyboard::Down) {
-      if (cursor_pos.y + 1 < m_buffer.lines.size()) {
-        cursor_pos.y++;
-        if (m_buffer.lines[cursor_pos.y].getSize() < cursor_pos.x) {
-          cursor_pos.x = m_buffer.lines[cursor_pos.y].getSize();
+      if (m_cursor.y + 1 < m_buffer.lines.size()) {
+        m_cursor.y++;
+        if (m_buffer.lines[m_cursor.y].getSize() < m_cursor.x) {
+          m_cursor.x = m_buffer.lines[m_cursor.y].getSize();
         }
       }
     } else if (event.key.code == sf::Keyboard::Home) {
-      cursor_pos.x = 0;
+      m_cursor.x = 0;
     } else if (event.key.code == sf::Keyboard::End) {
-      cursor_pos.x = m_buffer.lines[cursor_pos.y].getSize();
+      m_cursor.x = m_buffer.lines[m_cursor.y].getSize();
     } else if (event.key.code == sf::Keyboard::Backspace) {
-      if (cursor_pos.y > 0 && m_buffer.lines[cursor_pos.y].isEmpty()) {
-        m_buffer.lines.erase(m_buffer.lines.begin() + cursor_pos.y);
-        cursor_pos.y--;
-        cursor_pos.x = m_buffer.lines[cursor_pos.y].getSize();
-      } else if (cursor_pos.x > 0) {
-        cursor_pos.x--;
-        m_buffer.lines[cursor_pos.y].erase(cursor_pos.x);
+      if (m_cursor.y > 0 && m_buffer.lines[m_cursor.y].isEmpty()) {
+        m_buffer.lines.erase(m_buffer.lines.begin() + m_cursor.y);
+        m_cursor.y--;
+        m_cursor.x = m_buffer.lines[m_cursor.y].getSize();
+      } else if (m_cursor.x > 0) {
+        m_cursor.x--;
+        m_buffer.lines[m_cursor.y].erase(m_cursor.x);
       }
     }
   }
@@ -115,8 +149,10 @@ private:
   sf::Text m_text;
   sf::RectangleShape m_cursor_rect;
 
+  Mode m_mode{Mode::Edit};
   Buffer m_buffer{};
-  sf::Vector2u cursor_pos;
+  sf::String m_minibuffer;
+  sf::Vector2u m_cursor;
 
   void draw_buffer_text(const std::vector<sf::String> &lines) {
     sf::RenderTexture texture;
